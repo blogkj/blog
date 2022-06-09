@@ -17,20 +17,55 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [12.x]
+        node-version: [14.x]
 
     steps:
       - name: Checkout # 步骤1
-        uses: actions/checkout@v1 # 使用的动作。格式：userName/repoName。作用：检出仓库，获取源码。 官方actions库：https://github.com/actions
+        uses: actions/checkout@v2 # 使用的动作。格式：userName/repoName。作用：检出仓库，获取源码。 官方actions库：https://github.com/actions
+      
       - name: Use Node.js ${{ matrix.node-version }} # 步骤2
-        uses: actions/setup-node@v1 # 作用：安装nodejs
+        uses: actions/setup-node@v1
         with:
           node-version: ${{ matrix.node-version }} # 版本
-      - name: run deploy.sh # 步骤3
-        env: # 设置环境变量
-          GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }} 
-          CODING_TOKEN: ${{ secrets.CODING_TOKEN }}
-        run: npm install && npm run deploy
+      # 缓存 node_modules
+      - name: Cache dependencies
+        uses: actions/cache@v2
+        id: yarn-cache
+        with:
+          path: |
+            **/node_modules
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
+      # 如果缓存没有命中，安装依赖
+      - name: Install dependencies
+        if: steps.yarn-cache.outputs.cache-hit != 'true'
+        run: yarn --frozen-lockfile
 
-      # 如只提交到github pages可以使用github-pages-deploy-action，详见: https://github.com/JamesIves/github-pages-deploy-action
-      
+      # 运行构建脚本
+      - name: Build VuePress site
+        run: yarn build
+      # 查看 workflow 的文档来获取更多信息
+      # @see https://github.com/crazy-max/ghaction-github-pages
+      - name: Deploy to GitHub Pages
+        uses: crazy-max/ghaction-github-pages@v2
+        with:
+          # 部署到 gh-pages 分支
+          target_branch: gh-pages
+          # 部署目录为 VuePress 的默认输出目录
+          build_dir: docs/.vuepress/dist
+        env:
+          # @see https://docs.github.com/cn/actions/reference/authentication-in-a-workflow#about-the-github_token-secret
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 运行构建脚本
+      # - name: Deploy to gitee Pages
+      #   run: yarn deploy
+
+      # - name: Build and Deploy # 步骤3 （只提交到github可以使用这个步骤）
+      #   uses: JamesIves/github-pages-deploy-action@master # 作用：将项目构建和部署到github。 https://github.com/JamesIves/github-pages-deploy-action
+      #   env: # 设置环境变量
+      #     ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }} # toKen私密变量
+      #     BASE_BRANCH: master # 要部署的文件夹所在的分支.
+      #     BRANCH: gh-pages # 部署到的分支
+      #     FOLDER: docs/.vuepress/dist # 要部署的文件夹.
+      #     BUILD_SCRIPT: npm install && npm run build && cd docs/.vuepress/dist && echo 'xugaoyi.com' > CNAME && cd - # 部署前要执行的命令（记得cd进入某个目录后，后面要cd -退回开始的目录）
